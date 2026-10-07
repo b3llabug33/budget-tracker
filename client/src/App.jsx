@@ -7,32 +7,43 @@ import SpendingCard from './components/SpendingCard';
 import CategoryCard from './components/CategoryCard';
 import MerchantsCard from './components/MerchantsCard';
 import TransactionsCard from './components/TransactionsCard';
+import InvestmentsView from './components/InvestmentsView';
+
+const VIEWS = [
+  ['spending', 'Spending'],
+  ['investments', 'Investments'],
+];
 
 export default function App() {
   const [status, setStatus] = useState(null);
+  const [view, setView] = useState('spending');
+  const [investments, setInvestments] = useState(null);
   const [preset, setPreset] = useState('month');
   const [custom, setCustom] = useState({ start: '', end: '' });
   const [dashboard, setDashboard] = useState({});
   const [loading, setLoading] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
+  const [linkKind, setLinkKind] = useState('bank'); // what the open Plaid Link is connecting
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
 
   const range = useMemo(() => rangeFor(preset, custom), [preset, custom]);
 
-  // Loads every card for the selected range in parallel.
+  // Loads every card for the selected range, plus investments, in parallel.
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
       const dates = { start: range.start, end: range.end };
-      const [s, trend, byCategory, byMerchant, tx] = await Promise.all([
+      const [s, trend, byCategory, byMerchant, tx, inv] = await Promise.all([
         api('/api/status'),
         api('/api/spending/trend', { params: { ...dates, prevStart: range.prevStart, prevEnd: range.prevEnd } }),
         api('/api/spending/by-category', { params: dates }),
         api('/api/spending/by-merchant', { params: dates }),
         api('/api/transactions', { params: dates }),
+        api('/api/investments'),
       ]);
       setStatus(s);
+      setInvestments(inv);
       setDashboard({ trend, byCategory, byMerchant, transactions: tx.transactions });
       setError('');
     } catch (err) {
@@ -68,6 +79,7 @@ export default function App() {
           body: JSON.stringify({
             public_token: publicToken,
             institution: metadata.institution ? metadata.institution.name : null,
+            kind: linkKind,
           }),
         });
         setLinkToken(null);
@@ -76,7 +88,7 @@ export default function App() {
         setError(`Connecting the bank failed: ${err.message}`);
       }
     },
-    [sync]
+    [sync, linkKind]
   );
 
   const { open, ready } = usePlaidLink({ token: linkToken, onSuccess });
@@ -86,10 +98,12 @@ export default function App() {
     if (linkToken && ready) open();
   }, [linkToken, ready, open]);
 
-  async function connectBank() {
+  // kind: 'bank' for BofA transactions, 'investments' for Webull holdings
+  async function connect(kind) {
     setError('');
     try {
-      const { link_token } = await api('/api/link-token', { method: 'POST' });
+      const { link_token } = await api('/api/link-token', { method: 'POST', body: JSON.stringify({ kind }) });
+      setLinkKind(kind);
       setLinkToken(link_token);
     } catch (err) {
       setError(`Couldn't start Plaid Link: ${err.message}`);
@@ -98,31 +112,38 @@ export default function App() {
 
   const demo = Boolean(status && status.demo);
   const connected = Boolean(status && status.connected);
+  const brokerConnected = Boolean(status && status.brokerage);
+  const anyConnected = connected || brokerConnected;
 
   return (
     <div className="page">
       <header className="top">
         <div>
-          <h1>Spending</h1>
+          <h1>{view === 'spending' ? 'Spending' : 'Investments'}</h1>
           {status && (
             <p className="status">
               {demo
                 ? 'Demo data'
-                : connected
-                  ? `${status.institution || 'Bank'} · ${status.lastSync ? 'synced ' + new Date(status.lastSync).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not synced yet'}`
-                  : 'No bank connected'}
+                : anyConnected
+                  ? `${[status.institution, status.brokerage].filter(Boolean).join(' + ')} · ${status.lastSync ? 'synced ' + new Date(status.lastSync).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not synced yet'}`
+                  : 'Nothing connected yet'}
             </p>
           )}
         </div>
         <div className="top-actions">
-          {!demo && connected && (
+          {!demo && anyConnected && (
             <button className="icon-button" onClick={sync} disabled={syncing} aria-label="Sync transactions" title="Sync transactions">
               <span className={syncing ? 'spin' : ''} aria-hidden="true">⟳</span>
             </button>
           )}
-          {!demo && (
-            <button className="primary" onClick={connectBank}>
+          {!demo && view === 'spending' && (
+            <button className="primary" onClick={() => connect('bank')}>
               {connected ? 'Reconnect' : 'Connect bank'}
+            </button>
+          )}
+          {!demo && view === 'investments' && brokerConnected && (
+            <button className="primary" onClick={() => connect('investments')}>
+              Reconnect
             </button>
           )}
         </div>
@@ -130,20 +151,40 @@ export default function App() {
 
       {demo && (
         <p className="banner">
-          You're looking at sample data. Add Plaid keys to <code>server/.env</code> to connect a real bank.
+          You're looking at sample data. Add Plaid keys to <code>server/.env</code> to connect real accounts.
         </p>
       )}
       {error && <p className="banner error">{error}</p>}
 
-      <RangePicker preset={preset} onPreset={setPreset} custom={custom} onCustom={setCustom} />
+      <div className="tabs" role="tablist" aria-label="View">
+        {VIEWS.map(([value, label]) => (
+          <button
+            key={value}
+            role="tab"
+            aria-selected={view === value}
+            className={view === value ? 'active' : ''}
+            onClick={() => setView(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* Keep the previous numbers on screen (faded) while new ones load. */}
-      <main className={loading ? 'grid loading' : 'grid'}>
-        <SpendingCard trend={dashboard.trend} range={range} />
-        <CategoryCard data={dashboard.byCategory} />
-        <MerchantsCard key={range.start + range.end} data={dashboard.byMerchant} range={range} />
-        <TransactionsCard key={'t' + range.start + range.end} transactions={dashboard.transactions} />
-      </main>
+      {view === 'spending' ? (
+        <>
+          <RangePicker preset={preset} onPreset={setPreset} custom={custom} onCustom={setCustom} />
+
+          {/* Keep the previous numbers on screen (faded) while new ones load. */}
+          <main className={loading ? 'grid loading' : 'grid'}>
+            <SpendingCard trend={dashboard.trend} range={range} />
+            <CategoryCard data={dashboard.byCategory} />
+            <MerchantsCard key={range.start + range.end} data={dashboard.byMerchant} range={range} />
+            <TransactionsCard key={'t' + range.start + range.end} transactions={dashboard.transactions} />
+          </main>
+        </>
+      ) : (
+        <InvestmentsView data={investments} demo={demo} onConnect={() => connect('investments')} />
+      )}
     </div>
   );
 }

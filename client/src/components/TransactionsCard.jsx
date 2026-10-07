@@ -6,7 +6,7 @@ const PAGE = 25;
 // Transactions in the selected range, grouped under a heading per day.
 export default function TransactionsCard({ transactions }) {
   const [limit, setLimit] = useState(PAGE);
-  if (!transactions) return <section className="card transactions-card" />;
+  if (!transactions) return <section className="card wide" />;
 
   const shown = transactions.slice(0, limit);
   const days = [];
@@ -17,7 +17,7 @@ export default function TransactionsCard({ transactions }) {
   }
 
   return (
-    <section className="card transactions-card">
+    <section className="card wide">
       <h2>Transactions</h2>
       {transactions.length === 0 && <p className="empty">No transactions in this range.</p>}
 

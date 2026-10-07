@@ -2,10 +2,12 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env'), quiet:
 
 const express = require('express');
 const { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } = require('plaid');
-const { encrypt, decrypt, getKey } = require('./crypto');
+const { encrypt, getKey } = require('./crypto');
 const store = require('./store');
 const demo = require('./demo');
 const spending = require('./spending');
+const investments = require('./investments');
+const { syncAll, isoDate } = require('./sync');
 
 // ---- Startup checks ----
 const { PLAID_CLIENT_ID, PLAID_SECRET } = process.env;
@@ -50,7 +52,7 @@ function handleError(res, err, label) {
 }
 
 function rejectInDemo(req, res, next) {
-  if (DEMO) return res.status(400).json({ error: 'DEMO_MODE', message: 'Add Plaid keys to server/.env to connect a real bank.' });
+  if (DEMO) return res.status(400).json({ error: 'DEMO_MODE', message: 'Add Plaid keys to server/.env to connect real accounts.' });
   next();
 }
 
@@ -58,24 +60,27 @@ function rejectInDemo(req, res, next) {
 
 app.get('/api/status', (req, res) => {
   if (DEMO) {
-    return res.json({
-      demo: true,
-      connected: false,
-      institution: null,
-      lastSync: null,
-      transactionCount: demo.transactions.length,
-    });
+    return res.json({ demo: true, connected: false, institution: null, brokerage: null, lastSync: null });
   }
   res.json({ demo: false, plaidEnv: PLAID_ENV, ...store.getStatus() });
 });
 
-// Step 1 of connecting a bank: the client needs a short-lived link token to open Plaid Link.
+// What each kind of connection asks Plaid for.
+const PRODUCTS = {
+  bank: [Products.Transactions],
+  investments: [Products.Investments], // read-only: holdings and history, never trading
+};
+
+// Step 1 of connecting an account: the client needs a short-lived link token to open Plaid Link.
+// Body: { kind: 'bank' | 'investments' }
 app.post('/api/link-token', rejectInDemo, async (req, res) => {
+  const kind = req.body.kind || 'bank';
+  if (!PRODUCTS[kind]) return res.status(400).json({ error: 'kind must be bank or investments' });
   try {
     const response = await plaid.linkTokenCreate({
       user: { client_user_id: 'bella' }, // single user app
       client_name: 'Budget Tracker',
-      products: [Products.Transactions],
+      products: PRODUCTS[kind],
       country_codes: [CountryCode.Us],
       language: 'en',
     });
@@ -89,13 +94,16 @@ app.post('/api/link-token', rejectInDemo, async (req, res) => {
 // long-lived access token. The access token never leaves the server.
 app.post('/api/exchange', rejectInDemo, async (req, res) => {
   const { public_token, institution } = req.body;
+  const kind = req.body.kind || 'bank';
   if (!public_token) return res.status(400).json({ error: 'public_token is required' });
+  if (!PRODUCTS[kind]) return res.status(400).json({ error: 'kind must be bank or investments' });
   try {
     const response = await plaid.itemPublicTokenExchange({ public_token });
-    store.setItem({
+    store.addItem({
       itemId: response.data.item_id,
       accessTokenEnc: encrypt(response.data.access_token),
       institution: institution || null,
+      kind,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -103,56 +111,26 @@ app.post('/api/exchange', rejectInDemo, async (req, res) => {
   }
 });
 
-// Pulls everything new since the saved cursor. Plaid pages results, so loop
-// until has_more is false, then save all pages and the new cursor together.
+// Syncs every connected bank and brokerage, then saves today's portfolio value
+// so the investments chart grows a point per day.
 app.post('/api/sync', rejectInDemo, async (req, res) => {
-  const item = store.getItem();
-  if (!item) return res.status(400).json({ error: 'No bank connected yet' });
-
-  const accessToken = decrypt(item.accessTokenEnc);
-  const startCursor = store.getCursor();
-
+  if (store.getItems().length === 0) return res.status(400).json({ error: 'Nothing connected yet' });
   try {
-    let added = [];
-    let modified = [];
-    let removed = [];
-    let cursor = startCursor;
-    let hasMore = true;
-
-    while (hasMore) {
-      let page;
-      try {
-        page = (
-          await plaid.transactionsSync({
-            access_token: accessToken,
-            cursor: cursor || undefined,
-            count: 500,
-          })
-        ).data;
-      } catch (err) {
-        // Plaid's data changed mid-pagination: throw away this run's pages and restart.
-        const code = err.response && err.response.data && err.response.data.error_code;
-        if (code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') {
-          added = [];
-          modified = [];
-          removed = [];
-          cursor = startCursor;
-          continue;
-        }
-        throw err;
-      }
-      added = added.concat(page.added);
-      modified = modified.concat(page.modified);
-      removed = removed.concat(page.removed);
-      cursor = page.next_cursor;
-      hasMore = page.has_more;
+    const results = await syncAll(plaid);
+    const snapshots = store.getInvestments();
+    if (snapshots.length) {
+      const { totalValue } = investments.summarize(snapshots, []);
+      store.recordHistory(isoDate(new Date()), totalValue);
     }
-
-    store.applySync({ added, modified, removed, cursor });
-    res.json({ added: added.length, modified: modified.length, removed: removed.length });
+    res.json({ results });
   } catch (err) {
     handleError(res, err, 'sync');
   }
+});
+
+app.get('/api/investments', (req, res) => {
+  if (DEMO) return res.json(investments.summarize([demo.investments.snapshot], demo.investments.history));
+  res.json(investments.summarize(store.getInvestments(), store.getHistory()));
 });
 
 function allTransactions() {
