@@ -4,30 +4,34 @@ const express = require('express');
 const { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } = require('plaid');
 const { encrypt, decrypt, getKey } = require('./crypto');
 const store = require('./store');
+const demo = require('./demo');
 
 // ---- Startup checks ----
 const { PLAID_CLIENT_ID, PLAID_SECRET } = process.env;
 const PLAID_ENV = process.env.PLAID_ENV || 'sandbox';
 const PORT = Number(process.env.PORT) || 3001;
 
-if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
-  console.error('Missing PLAID_CLIENT_ID or PLAID_SECRET in server/.env');
-  process.exit(1);
-}
-if (!PlaidEnvironments[PLAID_ENV]) {
-  console.error(`PLAID_ENV must be one of: ${Object.keys(PlaidEnvironments).join(', ')}`);
-  process.exit(1);
-}
-getKey(); // throws early if ENCRYPTION_KEY is missing or malformed
+// Demo mode: with no Plaid keys, serve sample transactions so the UI can be
+// previewed without a bank. Real keys in .env switch it off automatically.
+const DEMO = !PLAID_CLIENT_ID || !PLAID_SECRET;
 
-const plaid = new PlaidApi(
-  new Configuration({
-    basePath: PlaidEnvironments[PLAID_ENV],
-    baseOptions: {
-      headers: { 'PLAID-CLIENT-ID': PLAID_CLIENT_ID, 'PLAID-SECRET': PLAID_SECRET },
-    },
-  })
-);
+let plaid = null;
+if (!DEMO) {
+  if (!PlaidEnvironments[PLAID_ENV]) {
+    console.error(`PLAID_ENV must be one of: ${Object.keys(PlaidEnvironments).join(', ')}`);
+    process.exit(1);
+  }
+  getKey(); // throws early if ENCRYPTION_KEY is missing or malformed
+
+  plaid = new PlaidApi(
+    new Configuration({
+      basePath: PlaidEnvironments[PLAID_ENV],
+      baseOptions: {
+        headers: { 'PLAID-CLIENT-ID': PLAID_CLIENT_ID, 'PLAID-SECRET': PLAID_SECRET },
+      },
+    })
+  );
+}
 
 const app = express();
 app.use(express.json());
@@ -44,14 +48,28 @@ function handleError(res, err, label) {
   res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
 }
 
+function rejectInDemo(req, res, next) {
+  if (DEMO) return res.status(400).json({ error: 'DEMO_MODE', message: 'Add Plaid keys to server/.env to connect a real bank.' });
+  next();
+}
+
 // ---- Routes ----
 
 app.get('/api/status', (req, res) => {
-  res.json({ plaidEnv: PLAID_ENV, ...store.getStatus() });
+  if (DEMO) {
+    return res.json({
+      demo: true,
+      connected: false,
+      institution: null,
+      lastSync: null,
+      transactionCount: demo.transactions.length,
+    });
+  }
+  res.json({ demo: false, plaidEnv: PLAID_ENV, ...store.getStatus() });
 });
 
 // Step 1 of connecting a bank: the client needs a short-lived link token to open Plaid Link.
-app.post('/api/link-token', async (req, res) => {
+app.post('/api/link-token', rejectInDemo, async (req, res) => {
   try {
     const response = await plaid.linkTokenCreate({
       user: { client_user_id: 'bella' }, // single user app
@@ -68,7 +86,7 @@ app.post('/api/link-token', async (req, res) => {
 
 // Step 2: Plaid Link hands the client a public token, which we trade for a
 // long-lived access token. The access token never leaves the server.
-app.post('/api/exchange', async (req, res) => {
+app.post('/api/exchange', rejectInDemo, async (req, res) => {
   const { public_token, institution } = req.body;
   if (!public_token) return res.status(400).json({ error: 'public_token is required' });
   try {
@@ -86,7 +104,7 @@ app.post('/api/exchange', async (req, res) => {
 
 // Pulls everything new since the saved cursor. Plaid pages results, so loop
 // until has_more is false, then save all pages and the new cursor together.
-app.post('/api/sync', async (req, res) => {
+app.post('/api/sync', rejectInDemo, async (req, res) => {
   const item = store.getItem();
   if (!item) return res.status(400).json({ error: 'No bank connected yet' });
 
@@ -138,7 +156,8 @@ app.post('/api/sync', async (req, res) => {
 
 app.get('/api/transactions', (req, res) => {
   // Send only the fields the UI uses.
-  const transactions = store.getTransactions().map((t) => ({
+  const source = DEMO ? demo.transactions : store.getTransactions();
+  const transactions = source.map((t) => ({
     id: t.transaction_id,
     date: t.date,
     merchant: t.merchant_name || t.name,
@@ -151,5 +170,6 @@ app.get('/api/transactions', (req, res) => {
 
 // Bind to localhost only: the server is never reachable from the network.
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Budget tracker API on http://127.0.0.1:${PORT} (Plaid ${PLAID_ENV})`);
+  const mode = DEMO ? 'DEMO MODE, sample data' : `Plaid ${PLAID_ENV}`;
+  console.log(`Budget tracker API on http://127.0.0.1:${PORT} (${mode})`);
 });

@@ -60,6 +60,10 @@ cd client
 npm run dev        # app on http://127.0.0.1:5173
 ```
 
+## Demo mode
+
+If `server/.env` has no Plaid keys (or doesn't exist), the server starts in **demo mode** and serves about 60 days of sample transactions from `server/demo.js`. This lets anyone preview the app without a bank account. The connect and sync buttons are disabled in demo mode. Adding real keys switches it off automatically.
+
 ## Testing with Plaid Sandbox
 
 1. Open http://127.0.0.1:5173 and click **Connect bank**.
@@ -73,6 +77,7 @@ server/
   index.js     Express routes: status, link-token, exchange, sync, transactions
   crypto.js    AES-256-GCM encrypt/decrypt for the access token
   store.js     temporary JSON file storage (server/data/store.json)
+  demo.js      sample transactions for demo mode
 client/
   src/App.jsx  connect button, sync button, transaction table
 ```

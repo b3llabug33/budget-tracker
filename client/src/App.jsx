@@ -94,11 +94,13 @@ export default function App() {
     }
   }
 
+  const demo = Boolean(status && status.demo);
+
   return (
     <main>
       <header>
         <h1>Budget Tracker</h1>
-        {status && (
+        {status && !status.demo && (
           <p className="status">
             {status.connected ? `Connected to ${status.institution || 'bank'}` : 'No bank connected'}
             {' · '}Plaid {status.plaidEnv}
@@ -107,9 +109,17 @@ export default function App() {
         )}
       </header>
 
+      {demo && (
+        <p className="demo-banner">
+          Demo mode: showing sample transactions. Add Plaid keys to <code>server/.env</code> to connect a real bank.
+        </p>
+      )}
+
       <div className="actions">
-        <button onClick={connectBank}>{status && status.connected ? 'Reconnect bank' : 'Connect bank'}</button>
-        <button onClick={sync} disabled={syncing || !(status && status.connected)}>
+        <button onClick={connectBank} disabled={demo}>
+          {status && status.connected ? 'Reconnect bank' : 'Connect bank'}
+        </button>
+        <button onClick={sync} disabled={demo || syncing || !(status && status.connected)}>
           {syncing ? 'Syncing…' : 'Sync transactions'}
         </button>
       </div>
