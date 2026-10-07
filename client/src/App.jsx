@@ -1,61 +1,63 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
-
-// Small fetch wrapper that throws the server's error message on failure.
-async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.message || body.error || `Request failed: ${res.status}`);
-  return body;
-}
-
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-
-function formatCategory(category) {
-  // FOOD_AND_DRINK -> Food and drink
-  if (!category) return '';
-  const words = category.toLowerCase().replace(/_/g, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
+import { api } from './api';
+import { rangeFor } from './format';
+import RangePicker from './components/RangePicker';
+import SpendingCard from './components/SpendingCard';
+import CategoryCard from './components/CategoryCard';
+import MerchantsCard from './components/MerchantsCard';
+import TransactionsCard from './components/TransactionsCard';
 
 export default function App() {
   const [status, setStatus] = useState(null);
-  const [transactions, setTransactions] = useState([]);
+  const [preset, setPreset] = useState('month');
+  const [custom, setCustom] = useState({ start: '', end: '' });
+  const [dashboard, setDashboard] = useState({});
+  const [loading, setLoading] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [syncing, setSyncing] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const refresh = useCallback(async () => {
+  const range = useMemo(() => rangeFor(preset, custom), [preset, custom]);
+
+  // Loads every card for the selected range in parallel.
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
     try {
-      const [s, t] = await Promise.all([api('/api/status'), api('/api/transactions')]);
+      const dates = { start: range.start, end: range.end };
+      const [s, trend, byCategory, byMerchant, tx] = await Promise.all([
+        api('/api/status'),
+        api('/api/spending/trend', { params: { ...dates, prevStart: range.prevStart, prevEnd: range.prevEnd } }),
+        api('/api/spending/by-category', { params: dates }),
+        api('/api/spending/by-merchant', { params: dates }),
+        api('/api/transactions', { params: dates }),
+      ]);
       setStatus(s);
-      setTransactions(t.transactions);
+      setDashboard({ trend, byCategory, byMerchant, transactions: tx.transactions });
+      setError('');
     } catch (err) {
       setError(`Can't reach the server: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    loadDashboard();
+  }, [loadDashboard]);
 
   const sync = useCallback(async () => {
     setSyncing(true);
     setError('');
     try {
-      const result = await api('/api/sync', { method: 'POST' });
-      setMessage(`Synced: ${result.added} added, ${result.modified} modified, ${result.removed} removed`);
-      await refresh();
+      await api('/api/sync', { method: 'POST' });
+      await loadDashboard();
     } catch (err) {
       setError(`Sync failed: ${err.message}`);
     } finally {
       setSyncing(false);
     }
-  }, [refresh]);
+  }, [loadDashboard]);
 
   // Plaid Link calls this after the bank login succeeds.
   const onSuccess = useCallback(
@@ -95,69 +97,53 @@ export default function App() {
   }
 
   const demo = Boolean(status && status.demo);
+  const connected = Boolean(status && status.connected);
 
   return (
-    <main>
-      <header>
-        <h1>Budget Tracker</h1>
-        {status && !status.demo && (
-          <p className="status">
-            {status.connected ? `Connected to ${status.institution || 'bank'}` : 'No bank connected'}
-            {' · '}Plaid {status.plaidEnv}
-            {status.lastSync && ` · Last sync ${new Date(status.lastSync).toLocaleString()}`}
-          </p>
-        )}
+    <div className="page">
+      <header className="top">
+        <div>
+          <h1>Spending</h1>
+          {status && (
+            <p className="status">
+              {demo
+                ? 'Demo data'
+                : connected
+                  ? `${status.institution || 'Bank'} · ${status.lastSync ? 'synced ' + new Date(status.lastSync).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not synced yet'}`
+                  : 'No bank connected'}
+            </p>
+          )}
+        </div>
+        <div className="top-actions">
+          {!demo && connected && (
+            <button className="icon-button" onClick={sync} disabled={syncing} aria-label="Sync transactions" title="Sync transactions">
+              <span className={syncing ? 'spin' : ''} aria-hidden="true">⟳</span>
+            </button>
+          )}
+          {!demo && (
+            <button className="primary" onClick={connectBank}>
+              {connected ? 'Reconnect' : 'Connect bank'}
+            </button>
+          )}
+        </div>
       </header>
 
       {demo && (
-        <p className="demo-banner">
-          Demo mode: showing sample transactions. Add Plaid keys to <code>server/.env</code> to connect a real bank.
+        <p className="banner">
+          You're looking at sample data. Add Plaid keys to <code>server/.env</code> to connect a real bank.
         </p>
       )}
+      {error && <p className="banner error">{error}</p>}
 
-      <div className="actions">
-        <button onClick={connectBank} disabled={demo}>
-          {status && status.connected ? 'Reconnect bank' : 'Connect bank'}
-        </button>
-        <button onClick={sync} disabled={demo || syncing || !(status && status.connected)}>
-          {syncing ? 'Syncing…' : 'Sync transactions'}
-        </button>
-      </div>
+      <RangePicker preset={preset} onPreset={setPreset} custom={custom} onCustom={setCustom} />
 
-      {message && <p className="message">{message}</p>}
-      {error && <p className="error">{error}</p>}
-
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Merchant</th>
-            <th>Category</th>
-            <th className="amount">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((t) => (
-            <tr key={t.id} className={t.pending ? 'pending' : ''}>
-              <td>{t.date}</td>
-              <td>{t.merchant}</td>
-              <td>{formatCategory(t.category)}</td>
-              {/* Plaid amounts: positive = money out, negative = money in */}
-              <td className={`amount ${t.amount < 0 ? 'in' : ''}`}>
-                {t.amount < 0 ? '+' : '-'}
-                {money.format(Math.abs(t.amount))}
-              </td>
-            </tr>
-          ))}
-          {transactions.length === 0 && (
-            <tr>
-              <td colSpan={4} className="empty">
-                No transactions yet. Connect a bank, then sync.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </main>
+      {/* Keep the previous numbers on screen (faded) while new ones load. */}
+      <main className={loading ? 'grid loading' : 'grid'}>
+        <SpendingCard trend={dashboard.trend} range={range} />
+        <CategoryCard data={dashboard.byCategory} />
+        <MerchantsCard key={range.start + range.end} data={dashboard.byMerchant} range={range} />
+        <TransactionsCard key={'t' + range.start + range.end} transactions={dashboard.transactions} />
+      </main>
+    </div>
   );
 }

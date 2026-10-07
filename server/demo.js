@@ -11,6 +11,8 @@ const MERCHANTS = [
   ['Shell', 'TRANSPORTATION', 35, 55, 0.5],
   ['Uber', 'TRANSPORTATION', 12, 28, 0.3],
   ['AMC Theatres', 'ENTERTAINMENT', 12, 25, 0.25],
+  ['Ulta Beauty', 'PERSONAL_CARE', 15, 45, 0.2],
+  ['CVS Pharmacy', 'MEDICAL', 8, 30, 0.15],
 ];
 
 // Monthly charges: [name, category, amount, day of month]
@@ -36,7 +38,7 @@ function isoDate(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function build(days = 60) {
+function build(days = 100) {
   const rand = seededRandom(42);
   const transactions = [];
   const today = new Date();

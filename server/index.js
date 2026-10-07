@@ -5,6 +5,7 @@ const { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } = re
 const { encrypt, decrypt, getKey } = require('./crypto');
 const store = require('./store');
 const demo = require('./demo');
+const spending = require('./spending');
 
 // ---- Startup checks ----
 const { PLAID_CLIENT_ID, PLAID_SECRET } = process.env;
@@ -154,18 +155,63 @@ app.post('/api/sync', rejectInDemo, async (req, res) => {
   }
 });
 
+function allTransactions() {
+  return DEMO ? demo.transactions : store.getTransactions();
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Reads ?start=YYYY-MM-DD&end=YYYY-MM-DD (plus any extra date params named in keys).
+// Responds with 400 and returns null if any are missing or malformed.
+function readDates(req, res, keys = ['start', 'end']) {
+  const dates = {};
+  for (const key of keys) {
+    const value = req.query[key];
+    if (!DATE_RE.test(value || '')) {
+      res.status(400).json({ error: `${key} must be a YYYY-MM-DD date` });
+      return null;
+    }
+    dates[key] = value;
+  }
+  return dates;
+}
+
+// Optional filters: ?start&end limit the date range, ?merchant limits to one merchant.
 app.get('/api/transactions', (req, res) => {
-  // Send only the fields the UI uses.
-  const source = DEMO ? demo.transactions : store.getTransactions();
-  const transactions = source.map((t) => ({
-    id: t.transaction_id,
-    date: t.date,
-    merchant: t.merchant_name || t.name,
-    category: t.personal_finance_category ? t.personal_finance_category.primary : null,
-    amount: t.amount, // Plaid: positive = money out, negative = money in
-    pending: t.pending,
-  }));
+  const { start, end, merchant } = req.query;
+  if ((start && !DATE_RE.test(start)) || (end && !DATE_RE.test(end))) {
+    return res.status(400).json({ error: 'start and end must be YYYY-MM-DD dates' });
+  }
+  const transactions = allTransactions()
+    .filter((t) => (!start || t.date >= start) && (!end || t.date <= end))
+    .filter((t) => !merchant || (t.merchant_name || t.name) === merchant)
+    // Send only the fields the UI uses.
+    .map((t) => ({
+      id: t.transaction_id,
+      date: t.date,
+      merchant: t.merchant_name || t.name,
+      category: t.personal_finance_category ? t.personal_finance_category.primary : null,
+      amount: t.amount, // Plaid: positive = money out, negative = money in
+      pending: t.pending,
+      isSpending: spending.isSpending(t),
+    }));
   res.json({ transactions });
+});
+
+app.get('/api/spending/by-category', (req, res) => {
+  const d = readDates(req, res);
+  if (d) res.json(spending.byCategory(allTransactions(), d.start, d.end));
+});
+
+app.get('/api/spending/by-merchant', (req, res) => {
+  const d = readDates(req, res);
+  if (d) res.json(spending.byMerchant(allTransactions(), d.start, d.end));
+});
+
+// Running spending total for the selected range and the period it's compared with.
+app.get('/api/spending/trend', (req, res) => {
+  const d = readDates(req, res, ['start', 'end', 'prevStart', 'prevEnd']);
+  if (d) res.json(spending.trend(allTransactions(), d.start, d.end, d.prevStart, d.prevEnd));
 });
 
 // Bind to localhost only: the server is never reachable from the network.
