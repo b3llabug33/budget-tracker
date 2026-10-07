@@ -119,6 +119,9 @@ export default function App() {
     <div className="page">
       <header className="top">
         <div>
+          <p className="prompt">
+            bella@budget:~$ <span>./{view}</span>
+          </p>
           <h1>{view === 'spending' ? 'Spending' : 'Investments'}</h1>
           {status && (
             <p className="status">

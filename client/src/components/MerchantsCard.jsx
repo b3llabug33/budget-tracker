@@ -55,7 +55,7 @@ export default function MerchantsCard({ data, range }) {
           return (
             <li key={m.merchant}>
               <button className="row" onClick={() => toggle(m.merchant)} aria-expanded={isOpen}>
-                <span className="icon" style={{ '--tint': info.color }}>{info.icon}</span>
+                <span className="icon" style={{ '--tint': info.color }}>{info.code}</span>
                 <span className="name">
                   {m.merchant}
                   <small>

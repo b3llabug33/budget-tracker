@@ -34,7 +34,10 @@ export default function SpendingCard({ trend, range }) {
   return (
     <section className="card spending-card">
       <p className="eyebrow">Spent {range.label}</p>
-      <p className="hero">{money(currentTotal)}</p>
+      <p className="hero">
+        {money(currentTotal)}
+        <span className="cursor" aria-hidden="true" />
+      </p>
       {compareTo > 0 && (
         <p className={spentLess ? 'delta good' : 'delta bad'}>
           <span aria-hidden="true">{spentLess ? '▼' : '▲'}</span>
@@ -52,8 +55,8 @@ export default function SpendingCard({ trend, range }) {
           <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="currentFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--series-1)" stopOpacity={0.22} />
-                <stop offset="100%" stopColor="var(--series-1)" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.25} />
+                <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} stroke="var(--grid)" />
@@ -86,7 +89,8 @@ export default function SpendingCard({ trend, range }) {
             <Area
               type="monotone"
               dataKey="current"
-              stroke="var(--series-1)"
+              className="glow"
+              stroke="var(--accent)"
               strokeWidth={2}
               fill="url(#currentFill)"
               dot={false}

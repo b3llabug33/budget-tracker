@@ -20,7 +20,7 @@ export default function Donut({ slices, total, hovered, onHover, totalLabel = 'T
             endAngle={-270}
             stroke="var(--surface)"
             strokeWidth={2}
-            cornerRadius={4}
+            cornerRadius={0}
             isAnimationActive={false}
             onMouseEnter={(_, i) => onHover(slices[i].key)}
             onMouseLeave={() => onHover(null)}

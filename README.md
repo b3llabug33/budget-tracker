@@ -11,7 +11,7 @@ A personal budget tracker that pulls transactions from my bank and holdings from
 - **Merchants:** spending per merchant, sortable by amount, visits, or name. Tap one to see its transactions.
 - **Transactions:** grouped by day, with money in shown in green and pending charges greyed out.
 - **Date filters:** this week, this month, last month, or a custom range.
-- Works on a phone screen and follows the system light/dark setting.
+- Works on a phone screen. Terminal-style dark theme: monospace type, phosphor green, scanlines, and category code tags (FOOD, SHOP, BILL...).
 
 ## Investments
 

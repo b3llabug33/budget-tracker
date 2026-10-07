@@ -13,20 +13,20 @@ export const wholeMoney = (n) => wholeCurrency.format(n);
 // Each Plaid category keeps the same color everywhere, whatever its rank,
 // so "Shopping is orange" stays true when filters change.
 const CATEGORIES = {
-  FOOD_AND_DRINK: { label: 'Food & drink', icon: '🍔', color: 'var(--series-1)' },
-  GENERAL_MERCHANDISE: { label: 'Shopping', icon: '🛍️', color: 'var(--series-2)' },
-  TRANSPORTATION: { label: 'Transportation', icon: '🚗', color: 'var(--series-3)' },
-  RENT_AND_UTILITIES: { label: 'Bills & utilities', icon: '💡', color: 'var(--series-4)' },
-  ENTERTAINMENT: { label: 'Entertainment', icon: '🎬', color: 'var(--series-5)' },
-  PERSONAL_CARE: { label: 'Personal care', icon: '💅', color: 'var(--series-6)' },
-  MEDICAL: { label: 'Medical', icon: '💊', color: 'var(--series-7)' },
-  TRAVEL: { label: 'Travel', icon: '✈️', color: 'var(--series-8)' },
-  INCOME: { label: 'Income', icon: '💰', color: 'var(--other)' },
-  TRANSFER_IN: { label: 'Transfer in', icon: '🔁', color: 'var(--other)' },
-  TRANSFER_OUT: { label: 'Transfer', icon: '🔁', color: 'var(--other)' },
+  FOOD_AND_DRINK: { label: 'Food & drink', code: 'FOOD', color: 'var(--series-1)' },
+  GENERAL_MERCHANDISE: { label: 'Shopping', code: 'SHOP', color: 'var(--series-2)' },
+  TRANSPORTATION: { label: 'Transportation', code: 'AUTO', color: 'var(--series-3)' },
+  RENT_AND_UTILITIES: { label: 'Bills & utilities', code: 'BILL', color: 'var(--series-4)' },
+  ENTERTAINMENT: { label: 'Entertainment', code: 'FUN', color: 'var(--series-5)' },
+  PERSONAL_CARE: { label: 'Personal care', code: 'CARE', color: 'var(--series-6)' },
+  MEDICAL: { label: 'Medical', code: 'MED', color: 'var(--series-7)' },
+  TRAVEL: { label: 'Travel', code: 'TRIP', color: 'var(--series-8)' },
+  INCOME: { label: 'Income', code: 'PAY', color: 'var(--other)' },
+  TRANSFER_IN: { label: 'Transfer in', code: 'XFER', color: 'var(--other)' },
+  TRANSFER_OUT: { label: 'Transfer', code: 'XFER', color: 'var(--other)' },
 };
 
-export const OTHER = { label: 'Other', icon: '🧾', color: 'var(--other)' };
+export const OTHER = { label: 'Other', code: 'MISC', color: 'var(--other)' };
 
 // True for the categories that get their own color in charts.
 export function hasOwnColor(category) {

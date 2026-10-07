@@ -40,7 +40,7 @@ export default function CategoryCard({ data }) {
                 onMouseEnter={() => setHovered(s.key)}
                 onMouseLeave={() => setHovered(null)}
               >
-                <span className="icon" style={{ '--tint': s.color }}>{s.icon}</span>
+                <span className="icon" style={{ '--tint': s.color }}>{s.code}</span>
                 <span className="name">
                   {s.label}
                   <span className="bar" aria-hidden="true">

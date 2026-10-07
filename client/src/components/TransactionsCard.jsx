@@ -30,7 +30,7 @@ export default function TransactionsCard({ transactions }) {
               const moneyIn = t.amount < 0; // Plaid: negative = money in
               return (
                 <li key={t.id} className={t.pending ? 'row pending' : 'row'}>
-                  <span className="icon" style={{ '--tint': info.color }}>{info.icon}</span>
+                  <span className="icon" style={{ '--tint': info.color }}>{info.code}</span>
                   <span className="name">
                     {t.merchant}
                     <small>

@@ -45,7 +45,10 @@ function PortfolioCard({ data }) {
   return (
     <section className="card spending-card">
       <p className="eyebrow">Portfolio value</p>
-      <p className="hero">{money(data.totalValue)}</p>
+      <p className="hero">
+        {money(data.totalValue)}
+        <span className="cursor" aria-hidden="true" />
+      </p>
       <p className="delta-line">
         <Gain gain={data.gain} pct={data.gainPct} /> <span className="muted">all-time gain</span>
       </p>
@@ -72,8 +75,8 @@ function PortfolioCard({ data }) {
             <AreaChart data={history} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="valueFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--series-1)" stopOpacity={0.22} />
-                  <stop offset="100%" stopColor="var(--series-1)" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="var(--grid)" />
@@ -99,7 +102,8 @@ function PortfolioCard({ data }) {
                 type="monotone"
                 dataKey="value"
                 baseValue="dataMin"
-                stroke="var(--series-1)"
+                className="glow"
+                stroke="var(--accent)"
                 strokeWidth={2}
                 fill="url(#valueFill)"
                 dot={false}
